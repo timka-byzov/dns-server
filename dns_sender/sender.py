@@ -1,28 +1,40 @@
 import asyncio
+import socket
+import time
 
 from dns_response.dns_response import DNSResponse
-from local_api import LocalAPI
 from utils import get_ipv4s
 
 
-class EchoClientProtocol(asyncio.DatagramProtocol):
-    def __init__(self, on_con_lost=None):
-        self.on_con_lost = on_con_lost
-        self.transport = None
+class Sender:
+    def __init__(self, server_transport: asyncio.DatagramTransport, client_addr):
+        self.server_transport = server_transport
+        self.client_addr = client_addr
 
-    def connection_made(self, transport):
-        self.transport = transport
+    def send_udp_message(self, message, addr):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.sendto(message, addr)
+            bin_data, addr = sock.recvfrom(4000)
+        finally:
+            sock.close()
+        return bin_data, addr
 
-    def datagram_received(self, data, addr):
-        print("Received in client:", data)
+    def make_request(self, message):
+        curr_ip = "198.41.0.4"
 
-        dns_response = DNSResponse(data)
-        ips = get_ipv4s(dns_response.authority_records)
+        while True:
+            print(curr_ip)
+            bin_response, _ = self.send_udp_message(message, (curr_ip, 53))
+            response = DNSResponse(bin_response)
 
-        if dns_response.flags[0] & 0x04 or not ips:
-            LocalAPI.resend_dns_response_to_client(data)
-            return
+            if response.flags[0] & 0x04 or response.query['type'] == b'\x00\x0c':  # server is authority for domain or PTR request
+                # add_cache(domain_name, response.answer_records)
+                self.server_transport.sendto(bin_response, self.client_addr)
+                return
 
-        # LocalAPI.send_dns_request(data, (ips[0], 53))
-
-        # LocalAPI.resend_dns_response_to_client(data)
+            else:
+                curr_ip = get_ipv4s(response.additional_records)[0]
+        #
+        # bin_response, _ = self.send_udp_message(message, (curr_ip, 53))
+        # self.server_transport.sendto(bin_response, self.client_addr)

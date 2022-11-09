@@ -4,5 +4,3 @@ def get_ipv4s(records: dict):
 
 def normalize_ip(byte_ip):
     return '.'.join(str(x) for x in byte_ip)
-
-def iterative_

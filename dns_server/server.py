@@ -1,7 +1,7 @@
 import asyncio
 from threading import Thread
 
-from local_api import LocalAPI
+from dns_sender.sender import Sender
 
 
 class EchoServerProtocol(asyncio.DatagramProtocol):
@@ -17,5 +17,5 @@ class EchoServerProtocol(asyncio.DatagramProtocol):
         # print(self.transport.get_extra_info("peername"))
         # print('Received from %s' % (addr,))
         #
-        Thread.run(target=)
-        LocalAPI.send_dns_request(data, addr)
+        thread = Thread(target=Sender(self.transport, addr).make_request, args=(data,))
+        thread.run()
