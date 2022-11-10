@@ -2,6 +2,7 @@ import asyncio
 import socket
 import time
 
+from cache.cache_utils import Cache
 from dns_response.dns_response import DNSResponse
 from utils import get_ipv4s
 
@@ -24,17 +25,25 @@ class Sender:
         curr_ip = "198.41.0.4"
 
         while True:
-            print(curr_ip)
-            bin_response, _ = self.send_udp_message(message, (curr_ip, 53))
-            response = DNSResponse(bin_response)
 
-            if response.flags[0] & 0x04 or response.query['type'] == b'\x00\x0c':  # server is authority for domain or PTR request
-                # add_cache(domain_name, response.answer_records)
+            cache_data = Cache.get_cache(curr_ip, message)
+
+            if cache_data is None:
+                bin_response, _ = self.send_udp_message(message, (curr_ip, 53))
+            else:
+                bin_response = cache_data
+
+            response = DNSResponse(bin_response)
+            if cache_data is None:
+                Cache.refresh_cache(curr_ip, message, response)
+
+            # server is authority for domain or PTR response
+            if response.flags[0] & 0x04 or response.query['type'] == b'\x00\x0c' or \
+                    response.additional_records_count == 0:
+
+                # print(curr_ip)
                 self.server_transport.sendto(bin_response, self.client_addr)
                 return
 
             else:
                 curr_ip = get_ipv4s(response.additional_records)[0]
-        #
-        # bin_response, _ = self.send_udp_message(message, (curr_ip, 53))
-        # self.server_transport.sendto(bin_response, self.client_addr)

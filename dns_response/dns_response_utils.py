@@ -1,18 +1,38 @@
-def get_name(byte_num, bin_request):
+# def decode_refname(bytenum: int, bin_request: bytes):
+#     name = []
+#     while bin_request[bytenum] != 0:
+#         num = bin_request[bytenum]
+#         name.append(bin_request[bytenum:num + 1].decode(encoding="utf-8"))
+#         bytenum = num + 1
+#
+#     return ''.join(name)
 
-    while not (bin_request[byte_num] == 0 or bin_request[byte_num] == 0xc0):  # имя кончается на 0 или на ссылку
+def get_word(byte_num: int, byte_count: int, bin_request: bytes):
+    word = []
+
+    for i in range(byte_num, byte_num + byte_count):
+        word.append(chr(bin_request[i]))
+
+    return ''.join(word)
+
+
+def get_name(byte_num: int, bin_request: bytes):
+    name = []
+    while not (bin_request[byte_num] == 0):  # имя кончается на 0 или на ссылку
+        num = bin_request[byte_num]
         byte_num += 1
 
-    if bin_request[byte_num] == 0xc0:
-        byte_num += 1
+        if num > 64:
+            name.append(get_name(bin_request[byte_num], bin_request)[0])
+            break
+
+        else:
+            name.append(get_word(byte_num, num, bin_request))
+            byte_num += num
 
     byte_num += 1
 
-    # if bin_request[begin_byte] > 63:  # ссылка
-    #     return 'ref', byte_num - 1
-
-    # return bin_request[begin_byte:byte_num].decode('utf-8'), byte_num
-    return 'name', byte_num
+    return '.'.join(name), byte_num
 
 
 def parse_dns_query(byte_num, bin_request):

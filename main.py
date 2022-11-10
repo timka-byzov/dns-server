@@ -1,10 +1,13 @@
 import asyncio
 
+from cache.cache_utils import Cache
 from dns_server.server import EchoServerProtocol
 
 
 async def main():
     print("Starting UDP server")
+
+    Cache.load_cache()
 
     # Get a reference to the event loop as we plan to use
     # low-level APIs.
