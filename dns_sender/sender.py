@@ -1,47 +1,49 @@
 import asyncio
+import socket
+import time
 
-from local_api import LocalAPI
-
-
-class EchoClientProtocol:
-    def __init__(self, on_con_lost=None):
-        # self.on_con_lost = on_con_lost
-        self.transport = None
-
-    def connection_made(self, transport):
-        self.transport = transport
-        # print('Send:', self.message)
-        # self.transport.sendto(self.message)
-
-    def datagram_received(self, data, addr):
-        print("Received in client:", data)
-
-        # print("Close the socket")
-        # self.transport.close()
-
-    def error_received(self, exc):
-        print('Error received:', exc)
-
-    def connection_lost(self, exc):
-        print("Connection closed")
-        # self.on_con_lost.set_result(True)
+from cache.cache_utils import Cache
+from dns_response.dns_response import DNSResponse
+from utils import get_ipv4s
 
 
-# async def run_sender_loop():
-#     # Get a reference to the event loop as we plan to use
-#     # low-level APIs.
-#     loop = asyncio.get_running_loop()
-#
-#     on_con_lost = loop.create_future()
-#     # message = "Hello World!"
-#
-#     transport, protocol = await loop.create_datagram_endpoint(
-#         lambda: EchoClientProtocol(on_con_lost),
-#         remote_addr=("198.41.0.4", 53))
-#
-#     LocalAPI.sender_transport = transport
-#
-#     try:
-#         await on_con_lost
-#     finally:
-#         transport.close()
+class Sender:
+    def __init__(self, server_transport: asyncio.DatagramTransport, client_addr):
+        self.server_transport = server_transport
+        self.client_addr = client_addr
+
+    def send_udp_message(self, message, addr):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.sendto(message, addr)
+            bin_data, addr = sock.recvfrom(4000)
+        finally:
+            sock.close()
+        return bin_data, addr
+
+    def make_request(self, message):
+        curr_ip = "198.41.0.4"
+
+        while True:
+
+            cache_data = Cache.get_cache(curr_ip, message)
+
+            if cache_data is None:
+                bin_response, _ = self.send_udp_message(message, (curr_ip, 53))
+            else:
+                bin_response = cache_data
+
+            response = DNSResponse(bin_response)
+            if cache_data is None:
+                Cache.refresh_cache(curr_ip, message, response)
+
+            # server is authority for domain or PTR response
+            if response.flags[0] & 0x04 or response.query['type'] == b'\x00\x0c' or \
+                    response.additional_records_count == 0:
+
+                # print(curr_ip)
+                self.server_transport.sendto(bin_response, self.client_addr)
+                return
+
+            else:
+                curr_ip = get_ipv4s(response.additional_records)[0]
